@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	//	"sync"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -99,6 +100,25 @@ func updateDNS(s *dnsseeder) {
 		}
 	}
 
+	// synthetic SOA record for the seed zone
+	fqdn := s.dnsHost + "."
+	soa := new(dns.SOA)
+	soa.Hdr = dns.RR_Header{Name: fqdn, Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: s.ttl}
+	soa.Ns = fqdn
+	soa.Mbox = "hostmaster." + fqdn
+	soa.Serial = uint32(time.Now().Unix())
+	soa.Refresh = 3600
+	soa.Retry = 900
+	soa.Expire = 604800
+	soa.Minttl = s.ttl
+	config.dns[fqdn+"SOA"] = []dns.RR{soa}
+
+	// synthetic NS record pointing to the seed host itself
+	ns := new(dns.NS)
+	ns.Hdr = dns.RR_Header{Name: fqdn, Rrtype: dns.TypeNS, Class: dns.ClassINET, Ttl: s.ttl}
+	ns.Ns = fqdn
+	config.dns[fqdn+"NS"] = []dns.RR{ns}
+
 	config.dnsmtx.Unlock()
 
 	if config.stats {
@@ -134,6 +154,8 @@ func handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 		qtype = "A"
 	case dns.TypeAAAA:
 		qtype = "AAAA"
+	case dns.TypeSOA:
+		qtype = "SOA"
 	case dns.TypeTXT:
 		qtype = "TXT"
 	case dns.TypeMX:
